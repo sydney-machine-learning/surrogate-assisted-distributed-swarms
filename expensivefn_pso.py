@@ -54,7 +54,7 @@ class Space():
             for j in range(dim):
                 fit = fit + (particle.position[j]*particle.position[j] - 10*math.cos(2*math.pi*particle.position[j]))
         elif self.problem ==4:  # ackeley function
-            fit = -20*np.exp(-0.2*np.sqrt(0.5*(particle.position[0]*particle.position[0]+particle.positionx[1]*particle.position[1]))) - np.exp(0.5*(math.cos(2*math.pi*particle.position[0]) + math.cos(2*math.pi*particle.position[1]))) + math.e +20 
+            fit = -20*np.exp(-0.2*np.sqrt(0.5*(particle.position[0]*particle.position[0]+particle.position[1]*particle.position[1]))) - np.exp(0.5*(math.cos(2*math.pi*particle.position[0]) + math.cos(2*math.pi*particle.position[1]))) + math.e +20 
         elif self.problem ==5: #eggholder function
             fit = -(x[1]+47)*math.sin(np.sqrt(abs(particle.position[1]+(particle.position[0]/2)+47))) - x[0]*math.sin(np.sqrt(abs(particle.position[0]-particle.position[1]-47)))
         elif self.problem ==6: #easom function
