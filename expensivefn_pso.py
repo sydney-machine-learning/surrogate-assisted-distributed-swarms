@@ -44,7 +44,7 @@ class Space():
         
         fit = 0.0
         if self.problem == 1: # rosenbrock
-            for j in range(dim):
+            for j in range(dim-1):
                 fit += (100.0*(particle.position[j]*particle.position[j] - particle.position[j+1])*(particle.position[j]*particle.positionx[j] - particle.position[j+1]) + (particle.position[j]-1.0)*(particle.position[j]-1.0))
         elif self.problem ==2:  # ellipsoidal - sphere function
             for j in range(dim):
