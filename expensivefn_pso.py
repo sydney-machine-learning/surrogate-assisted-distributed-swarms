@@ -8,13 +8,13 @@ c2 = 0.9
 
 n_iterations = 100
 target_error = 0
-n_particles = 1000
-dim= 5
+n_particles = 100
+dim= 10
 class Particle():
     def __init__(self):
         self.position = np.zeros((dim,))
         for i in range(dim):
-            self.position[i] = (-1) ** (bool(random.getrandbits(1))) * random.random()*50
+            self.position[i] = (-1) ** (bool(random.getrandbits(1))) * random.random()*5
         self.pbest_position = self.position
         self.pbest_value = float('inf')
         self.velocity = np.zeros((dim , ))
@@ -45,7 +45,7 @@ class Space():
         fit = 0.0
         if self.problem == 1: # rosenbrock
             for j in range(dim-1):
-                fit += (100.0*(particle.position[j]*particle.position[j] - particle.position[j+1])*(particle.position[j]*particle.positionx[j] - particle.position[j+1]) + (particle.position[j]-1.0)*(particle.position[j]-1.0))
+                fit += (100.0*(particle.position[j]*particle.position[j] - particle.position[j+1])*(particle.position[j]*particle.position[j] - particle.position[j+1]) + (particle.position[j]-1.0)*(particle.position[j]-1.0))
         elif self.problem ==2:  # ellipsoidal - sphere function
             for j in range(dim):
                 fit = fit + ((j+1)*(particle.position[j]*particle.position[j]))
@@ -90,12 +90,13 @@ class Space():
             particle.move()
             
 
-search_space = Space(1, target_error, n_particles , 2)
+search_space = Space(1, target_error, n_particles ,1)
 particles_vector = [Particle() for _ in range(search_space.n_particles)]
 search_space.particles = particles_vector
 search_space.print_particles()
-x=[]
-y=[]
+
+a = [[] for k in range(dim)]
+
 ite = []
 iteration = 0
 while(iteration < n_iterations):
@@ -107,13 +108,13 @@ while(iteration < n_iterations):
 
     search_space.move_particles()
     iteration += 1
-        
-    x.append(search_space.gbest_position[0])
-    y.append(search_space.gbest_position[1])
+    
+    for k in range(dim):
+        a[k].append(search_space.gbest_position[k])
     ite.append(iteration)
+for k in range(dim):
+    plt.plot(ite,a[k])
 
-plt.plot(ite,x)
-plt.plot(ite,y)
 
 plt.show()
 print("The best solution is: ", search_space.gbest_position,"Value" ,search_space.gbest_value,  " in n_iterations: ", iteration)
