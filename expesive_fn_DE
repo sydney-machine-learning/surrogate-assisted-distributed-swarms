@@ -1,0 +1,57 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+def de(problem, bounds, popsize, its , mut=0.8, crossp=0.7):
+    dimensions = len(bounds)
+    pop = np.random.rand(popsize, dimensions)
+    min_b, max_b = np.asarray(bounds).T
+    diff = np.fabs(min_b - max_b)
+    pop_denorm = min_b + pop * diff
+    fitness = np.asarray([fit(ind,problem) for ind in pop_denorm])
+    best_idx = np.argmin(fitness)
+    best = pop_denorm[best_idx]
+    
+    for i in range(its):
+        for j in range(popsize):
+            idxs = [idx for idx in range(popsize) if idx != j]
+            a, b, c = pop[np.random.choice(idxs, 3, replace = False)]
+            mutant = np.clip(a + mut * (b - c), 0, 1)
+            cross_points = np.random.rand(dimensions) < crossp
+            if not np.any(cross_points):
+                cross_points[np.random.randint(0, dimensions)] = True
+            trial = np.where(cross_points, mutant, pop[j])
+            trial_denorm = min_b + trial * diff
+            f = fit(trial_denorm,problem)
+            if f < fitness[j]:
+                fitness[j] = f
+                pop[j] = trial
+                if f < fitness[best_idx]:
+                    best_idx = j
+                    best = trial_denorm
+                yield (best, fitness[best_idx])
+        
+        
+def fit(particle , problem):
+
+    fit = 0.0
+    if problem == 1: # rosenbrock
+        for j in range(len(particle)-1):
+            fit += 100.0*((particle[j]**2 - particle[j+1])**2) + (particle[j]-1.0)**2
+    elif problem ==2:  # ellipsoidal - sphere function
+        for j in range(len(particle)):
+            fit += (j+1)*(particle[j]**2)
+    elif problem ==3:  # rastrigin's function
+        fit = 10*len(particle)
+        for j in range(len(particle)):
+            fit += (particle[j]**2 - 10*math.cos(2*math.pi*particle[j]))
+    elif problem ==4:  # ackeley function
+        fit = -20*np.exp(-0.2*np.sqrt(0.5*(particle[0]**2+particle[1]**2))) - np.exp(0.5*(math.cos(2*math.pi*particle[0]) + math.cos(2*math.pi*particle[1]))) + math.e +20 
+    elif problem ==5: #eggholder function
+        fit = -(particle[1]+47)*math.sin(np.sqrt(abs(particle[1]+(particle[0]/2)+47))) - particle[0]*math.sin(np.sqrt(abs(particle[0]-particle[1]-47)))
+    elif problem ==6: #easom function
+        fit = -math.cos(particle[0])*math.cos(particle[1])*np.exp(-((particle[0]-math.pi)**2 + (particle[1]-math.pi)**2 ))            
+    elif problem ==7: #styblinski-tang function
+        for j in range(len(particle)):
+            fit = fit + (particle[j]**4 - 16*(particle[j]**2) + 5*particle[j])/2   
+
+    return fit # note we will maximize fitness, hence minimize error
