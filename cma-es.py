@@ -4,9 +4,6 @@ import sys
 import random
 import time
 import matplotlib.pyplot as plt
-#now i have cma-es
-#required = pop_size, dim , bounds , problem , num_evals , init_mean , init_covar , mu 
-#to compute = new_mean , new_covar 
 
 class EA:
     
@@ -32,7 +29,7 @@ class EA:
             return fit
 
     def run(self):
-        # ab hoga asla
+
         evals=0
         score_list = []
         eval_list = []
