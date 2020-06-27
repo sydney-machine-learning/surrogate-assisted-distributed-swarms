@@ -4,29 +4,6 @@ import sys
 import random
 import time
 import matplotlib.pyplot as plt
-# def fitness(particle , problem):
-
-#     fit = 0.0
-#     if problem == 1: # rosenbrock
-#         for j in range(len(particle)-1):
-#             fit += 100.0*((particle[j]**2 - particle[j+1])**2) + (particle[j]-1.0)**2
-#     elif problem ==2:  # ellipsoidal - sphere function
-#         for j in range(len(particle)):
-#             fit += (j+1)*(particle[j]**2)
-#     elif problem ==3:  # rastrigin's function
-#         fit = 10*len(particle)
-#         for j in range(len(particle)):
-#             fit += (particle[j]**2 - 10*math.cos(2*math.pi*particle[j]))
-#     elif problem ==4:  # ackeley function
-#         fit = -20*np.exp(-0.2*np.sqrt(0.5*(particle[0]**2+particle[1]**2))) - np.exp(0.5*(math.cos(2*math.pi*particle[0]) + math.cos(2*math.pi*particle[1]))) + math.e +20 
-#     elif problem ==5: #eggholder function
-#         fit = -(particle[1]+47)*math.sin(np.sqrt(abs(particle[1]+(particle[0]/2)+47))) - particle[0]*math.sin(np.sqrt(abs(particle[0]-particle[1]-47)))
-#     elif problem ==6: #easom function
-#         fit = -math.cos(particle[0])*math.cos(particle[1])*np.exp(-((particle[0]-math.pi)**2 + (particle[1]-math.pi)**2 ))            
-#     elif problem ==7: #styblinski-tang function
-#         for j in range(len(particle)):
-#             fit = fit + (particle[j]**4 - 16*(particle[j]**2) + 5*particle[j])/2   
-
 
 class EA:
     
@@ -63,7 +40,6 @@ class EA:
             return fit
 
     def run(self):
-        # ab hoga asla
         evals=0
         score_list = []
         eval_list = []
