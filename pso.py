@@ -3,7 +3,7 @@ import copy
 import sys
 import random
 import time
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt 
 
 class EA:
     
@@ -12,21 +12,15 @@ class EA:
         self.pop_size = pop_size
         self.dim = dim
         self.bounds = bounds
-        self.position = np.zeros((self.pop_size,self.dim))
-        self.velocity = np.zeros((self.pop_size,self.dim))
+
+        self.position = (bounds[1] - bounds[0]) * np.random.rand(pop_size,dim)  + bounds[0]
+        self.velocity = (bounds[1] - bounds[0]) * np.random.rand(pop_size,dim)  + bounds[0]
+    
         self.p_best = copy.copy(self.position)
         self.g_best = sys.float_info.max
         self.num_evals = num_evals
 
         self.problem = problem
-            
-    
-        for i in range(pop_size):
-            np_pos = np.random.rand(dim)
-            np_vel = np.random.rand(dim)
-        
-            self.position[i] = list((bounds[1] - bounds[0]) * np_pos  + bounds[0]) 
-            self.velocity[i] = list((bounds[1] - bounds[0]) * np_vel  + bounds[0])
 
         self.p_best_score = self.evaluate()
 
@@ -40,6 +34,7 @@ class EA:
             return fit
 
     def run(self):
+        # ab hoga asla
         evals=0
         score_list = []
         eval_list = []
@@ -68,7 +63,7 @@ class EA:
             self.position += self.velocity
 
             print("Best Score:",self.g_best)
-            print("At:",g_best_pos)
+            # print("At:",g_best_pos)
 
             evals+=self.pop_size
             score_list.append(self.g_best)
@@ -84,6 +79,6 @@ class EA:
 
 if __name__ == "__main__":
     start= time.time()
-    a = EA(args) # put those args there
+    a = EA(1000,50,[-5,5],2,500000)
     a.run()
     print("Time Taken = ",(time.time()-start)/60 ,"Minutes")
