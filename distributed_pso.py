@@ -188,6 +188,6 @@ class distributed_EA:
 
 if __name__ == "__main__":
     start= time.time()
-    a = distributed_EA(50,50,[-5,5],2,500000,3)
+    a = distributed_EA(50,50,[-5,5],2,500000,3) #contraint : pop_size%(max_evals/islands)==0
     a.evolve_islands()
     print("Time Taken = ",(time.time()-start)/60 ,"Minutes")
