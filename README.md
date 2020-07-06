@@ -1,9 +1,9 @@
 # surrogate-assisted-distributed-evo-alg
 Surrogate Assisted Distributed Evolutionary Algorithm for Computationally Expensive Problems 
 
-Problem 1 = Rosenbrock
-Problem 2 = Spherical
-Problem 3 = Rastrigin
+Problem 1 = Rosenbrock;
+Problem 2 = Spherical;
+Problem 3 = Rastrigin;
 Problem 4 = Stablinski-tang
 
 * PSO:
