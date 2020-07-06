@@ -94,7 +94,7 @@ Problem 4 = Stablinski-tang
 |4       |   30    |   100      |  100k    |  -968(-1170)  |
 |4       |   50    |   100      |  500k    |  -1600(-1950)    |
 
-* Island-G3-PCX
+* Island-G3-PCX (Island=3)
 
 |problem |   dim   | pop_size per island  | MaxEvals | Fitness  |
 |--------|---------|-----------|----------|----------|
