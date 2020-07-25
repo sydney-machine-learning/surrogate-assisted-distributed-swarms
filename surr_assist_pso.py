@@ -15,21 +15,23 @@ from keras.models import load_model
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# surrogate("krnn", X , Y , 0 , 0 , 0 , 0 , self.folder, self.save_surrogate_data, self.surrogate_topology )
+
 class surrogate: #General Class for surrogate models for predicting likelihood(here the fitness) given the weights
 
-    def __init__(self, model, X, Y, min_X, max_X, min_Y , max_Y, path, save_surrogate_data, model_topology):
+    def __init__(self, model, X, Y,  path, save_surrogate_data, model_topology):
 
         self.path = path + '/surrogate'
-        indices = np.where(Y==np.inf)[0]
-        X = np.delete(X, indices, axis=0)
-        Y = np.delete(Y, indices, axis=0)
+        # indices = np.where(Y==np.inf)[0]
+        # X = np.delete(X, indices, axis=0)
+        # Y = np.delete(Y, indices, axis=0)
         self.model_signature = 0.0
         self.X = X
         self.Y = Y
-        self.min_Y = min_Y
-        self.max_Y = max_Y
-        self.min_X = min_X
-        self.max_X = max_X
+        # self.min_Y = min_Y
+        # self.max_Y = max_Y
+        # self.min_X = min_X
+        # self.max_X = max_X
 
         self.model_topology = model_topology
 
@@ -46,22 +48,26 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
             print("Invalid Model!")
 
     # This function is ignored
-    def normalize(self, X):
-        maxer = np.zeros((1,X.shape[1]))
-        miner = np.ones((1,X.shape[1]))
+    # def normalize(self, X):
+    #     maxer = np.zeros((1,X.shape[1]))
+    #     miner = np.ones((1,X.shape[1]))
 
-        for i in range(X.shape[1]):
-            maxer[0,i] = max(X[:,i])
-            miner[0,i] = min(X[:,i])
-            X[:,i] = (X[:,i] - min(X[:,i]))/(max(X[:,i]) - min(X[:,i]))
-        return X, maxer, miner
+    #     for i in range(X.shape[1]):
+    #         maxer[0,i] = max(X[:,i])
+    #         miner[0,i] = min(X[:,i])
+    #         X[:,i] = (X[:,i] - min(X[:,i]))/(max(X[:,i]) - min(X[:,i]))
+    #     return X, maxer, miner
 
     def create_model(self):
         krnn = Sequential()
-
+        print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+        print("Input layer size", self.X.shape[1])
         if self.model_topology == 1:
             krnn.add(Dense(64, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
             krnn.add(Dense(16, kernel_initializer='uniform', activation='relu'))  #16
+            krnn.add(Dense(8, kernel_initializer='uniform', activation='relu'))
+            krnn.add(Dense(4, kernel_initializer='uniform', activation='relu'))
+            krnn.add(Dense(2, kernel_initializer='uniform', activation='relu'))
 
         if self.model_topology == 2:
             krnn.add(Dense(120, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
@@ -105,9 +111,13 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
 
             early_stopping = EarlyStopping(monitor='val_loss', patience=5)
             self.krnn.compile(loss='mse', optimizer='adam', metrics=['mse'])
-            train_log = self.krnn.fit(X_train, y_train.ravel(), batch_size=50, epochs=500, validation_split=0.1, verbose=1, callbacks=[early_stopping])
+            # print('Input data :',X_train)
+            # print('Output data ',y_train.ravel())
+            print("NN",self.krnn.summary())
+            train_log = self.krnn.fit(X_train, y_train.ravel(), batch_size=50, epochs=500, validation_split=0.1, verbose=0, callbacks=[early_stopping])
 
-            scores = self.krnn.evaluate(X_test, y_test.ravel(), verbose = 1)
+            scores = self.krnn.evaluate(X_test, y_test.ravel(), verbose = 0)
+            print("scores",scores)
             # print("%s: %.5f" % (self.krnn.metrics_names[1], scores[1]))
 
             self.krnn.save(self.path+'/model_krnn_%s_.h5' %self.model_signature)
@@ -148,7 +158,7 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
                         print(e)
                         # pass
 
-                self.krnn.compile(loss='mse', optimizer='rmsprop', metrics=['mse'])
+                # self.krnn.compile(loss='mse', optimizer='rmsprop', metrics=['mse'])
                 krnn_prediction =-1.0
                 prediction = -1.0
 
@@ -262,7 +272,7 @@ class surrogate_EA(multiprocessing.Process):
         trainset_empty = True
         is_true_fit = True
         surg_fit_list = np.zeros((self.num_evals * 10,3))
-        surr_train_set = np.zeros((1000, self.dim+1))
+        surr_train_set = np.zeros((10000, self.dim+1))
         local_model_signature = 0.0
         self.surrogate_init = 0.0
         evals=0
@@ -282,7 +292,7 @@ class surrogate_EA(multiprocessing.Process):
             
             score_list.append(self.g_best_score)
             eval_list.append(evals)
-            print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island" )
+            print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
 
             # self.event.clear()
 
@@ -290,37 +300,42 @@ class surrogate_EA(multiprocessing.Process):
             vel_cognitive=c1*r1*(self.p_best-self.position)
             vel_social=c2*r2*(self.g_best-self.position)
             self.velocity=w*self.velocity+vel_cognitive+vel_social
-            self.position += self.velocity
-            
+            self.position += self.velocity 
 
             # Evaluation
             for i in range(self.pop_size):
-                
+
                 surrogate_X = self.g_best
                 best_surr_fit = self.g_best_score
                 surrogate_Y = np.array([best_surr_fit])
                 # proposed best parameters after the evaluation
                 w_proposal = self.position[i]
+                #if trainset_empty == True:
+                #surr_train_set = np.zeros((1, self.num_param+1))
                 ku = random.uniform(0,1)
-                if ku<self.surrogate_prob and evals >= self.surrogate_interval+1:
+                if ku<self.surrogate_prob and evals >= self.surrogate_interval+1 :
                     
                     is_true_fit = False
-
+                     
                     # Create the model when there was no previously assigned model for surrogate
                     if surrogate_model == None:
                         # Load the text saved before in the training surrogate func. in manager process 
+                        print("ENTERED CONDITION 1")
                         surrogate_model = surrogate("krnn",surrogate_X.copy(),surrogate_Y.copy(), self.minx, self.maxx, self.minY, self.maxY, self.path, self.save_surrogate_data, self.surrogate_topology)
                         surrogate_pred, nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]),False)
-                        #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
+                        # surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
 
                     # Getting the initial predictions if the surrogate model has yet not been initialized     
                     elif self.surrogate_init == 0.0:
                         surrogate_pred,  nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]), False)
+                        print("ENTERED CONDITION 2")
+                        #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
 
                     # Getting the predictions if surrogate model is already initialized    
                     else:
                         surrogate_pred,  nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]), True)
-                       
+                        # print("ENTERED CONDITION 3")
+                        #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
                     surr_mov_ave = (surg_fit_list[idx,2] + surg_fit_list[idx-1,2]+ surg_fit_list[idx-2,2])/3
                     #surr_proposal = (surrogate_pred * 0.5) + (  surr_mov_ave * 0.5)
                     surr_proposal = surrogate_pred
@@ -330,6 +345,7 @@ class surrogate_EA(multiprocessing.Process):
                         fitness_proposal_true = self.evaluate(w_proposal)
                     else:
                         fitness_proposal_true = 0
+
                     surrogate_counter += 1
                     surg_fit_list[idx+1,0] =  fitness_proposal_true
                     surg_fit_list[idx+1,1] = surr_proposal
@@ -350,12 +366,13 @@ class surrogate_EA(multiprocessing.Process):
 
                     surr_train_set[count_real, :] = param_train
                     count_real = count_real +1
-                
+                #...................................................# 
+                #swarm[i].error = self.fit_func(swarm[i].position)
                 error = surr_proposal
                 # print(i,error)
                 if error < self.p_best_score[i]:
                     self.p_best_score[i] = error
-                    self.p_best = copy.copy(self.position[i])
+                    self.p_best[i] = copy.copy(self.position[i])
 
                 if error < self.g_best_score:
                     self.g_best_score = error
@@ -363,8 +380,6 @@ class surrogate_EA(multiprocessing.Process):
 
                 idx += 1    
                        
-
-           
             
             #SWAPPING PREP
             """
@@ -400,10 +415,11 @@ class surrogate_EA(multiprocessing.Process):
                 #print("model_signature updated")
 
                 if self.model_signature==1.0:
+                    print('hey hey heyyyyy')
                     # # print 'min ', self.minY, ' max ', self.maxY
                     dummy_X = np.zeros((1,1))
                     dummy_Y = np.zeros((1,1))
-                    surrogate_model = surrogate("krnn", dummy_X, dummy_Y, 0, 0, 0, 0, self.path, self.save_surrogate_data, self.surrogate_topology )
+                    surrogate_model = surrogate("krnn", dummy_X, dummy_Y, self.path, self.save_surrogate_data, self.surrogate_topology )
 
                     local_model_signature = local_model_signature +1  
 
@@ -418,16 +434,54 @@ class surrogate_EA(multiprocessing.Process):
 
             # epoch += 1
             evals += self.pop_size
-      
-        # FINAL RESULTS
-    
-        print("Best particle:", self.g_best , 'of island', self.island_id)
 
+
+        print("Best particle:", self.g_best , 'of island', self.island_id)
+ 
         plt.plot(eval_list , score_list , label = self.island_id)
         plt.show()
 
         print("Island: {} chain dead!".format(self.island_id))
         self.signal_main.set()
+        return    
+
+            # # Updating gbest , pbest
+            # for i in range(self.pop_size):
+
+            #     if score[i]<self.p_best_score[i]:
+            #         self.p_best[i]=copy.copy(self.position[i])
+            #         self.p_best_score[i] = score[i]
+
+            #     if score[i]<self.g_best_score:
+            #         self.g_best_score = score[i]
+            #         self.g_best = copy.copy(self.position[i])
+
+
+            # print("Best Score:",self.g_best_score)
+
+
+            # if (evals % self.swap_interval == 0 ): # interprocess (island) communication for exchange of neighbouring best_swarm_pos
+            #     param = self.g_best
+            #     self.parameter_queue.put(param)
+            #     self.signal_main.set()
+            #     self.event.clear()
+            #     self.event.wait()
+            #     result =  self.parameter_queue.get()
+            #     self.g_best = result 
+            #     self.position[0] = self.g_best.copy()
+
+            # evals+=self.pop_size
+            # print("Evals=",evals)
+        #     score_list.append(self.g_best)
+        #     eval_list.append(evals)
+        #     if len(score_list)>100:
+        #         if np.all(score_list[-20:][0]==score_list[-10:]):
+        #             print("Stopping due to probable saturation at evals:",evals)
+        #             break
+
+        # plt.plot(eval_list,score_list)
+        # plt.show()
+
 
 class distributed_surrogate_EA:
     def __init__(self,pop_size,dim,bounds,problem,num_evals,num_islands,surrogate_topology,use_surrogate,compare_surrogate,save_surrogate_data,path):
@@ -449,7 +503,7 @@ class distributed_surrogate_EA:
         self.swap_interval = pop_size #means 1 iteration
 
         # Surrogate Variables
-        self.surrogate_interval = self.pop_size
+        self.surrogate_interval = 10*self.pop_size
         self.surrogate_prob = 0.5
         self.surrogate_resume = [multiprocessing.Event() for i in range(self.num_islands)]
         self.surrogate_start = [multiprocessing.Event() for i in range(self.num_islands)]
@@ -498,10 +552,10 @@ class distributed_surrogate_EA:
             self.model_signature += 1.0
 
             np.savetxt(self.folder+'/surrogate/model_signature.txt', [self.model_signature])
-            indices = np.where(Y==np.inf)[0]
-            X = np.delete(X, indices, axis=0)
-            Y = np.delete(Y,indices, axis=0)
-            surrogate_model = surrogate("krnn", X , Y , 0 , 0 , 0 , 0 , self.folder, self.save_surrogate_data, self.surrogate_topology )
+            # indices = np.where(Y==np.inf)[0]
+            # X = np.delete(X, indices, axis=0)
+            # Y = np.delete(Y,indices, axis=0)
+            surrogate_model = surrogate("krnn", X , Y , self.folder, self.save_surrogate_data, self.surrogate_topology )
             surrogate_model.train(self.model_signature)        
 
 
@@ -509,6 +563,14 @@ class distributed_surrogate_EA:
         
         self.initialize_islands()
         swap_proposal = np.ones(self.num_islands-1)
+ 
+        # create parameter holders for paramaters that will be swapped
+        #replica_param = np.zeros((self.num_islands, self.num_param))  
+        #lhood = np.zeros(self.num_islands)
+        # Define the starting and ending of MCMC Chains
+        start = 0
+        end = self.island_numevals
+        #number_exchange = np.zeros(self.num_islands) 
 
         for j in range(0,self.num_islands):        
             self.wait_island[j].clear()
@@ -587,18 +649,59 @@ class distributed_surrogate_EA:
             self.surrogate_parameter_queues[i].join_thread()
 
 
+        # swapping_percent = self.num_swap*100/self.total_swap_proposals
+        # print("Swapping_Percent:",swapping_percent)
 
 
+'''
+        self.initialize_islands()
 
+        for j in range(0,self.num_islands):        
+            self.wait_island[j].clear()
+            self.event[j].clear()
+            self.islands[j].start()
+        #SWAP PROCEDURE
 
+        swaps_appected_main =0
+        total_swaps_main =0
+        for i in range(int(self.island_numevals/self.swap_interval)):
+            count = 0
+            for index in range(self.num_islands):
+                if not self.islands[index].is_alive():
+                    count+=1
+                    self.wait_island[index].set() 
 
+            if count == self.num_islands:
+                break 
 
+            timeout_count = 0
+            for index in range(0,self.num_islands): 
+                flag = self.wait_island[index].wait()
+                if flag: 
+                    timeout_count += 1
 
+            if timeout_count != self.num_islands: 
+                continue
 
+            for index in range(0,self.num_islands-1): 
+                param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
+                self.parameter_queue[index].put(param_1)
+                self.parameter_queue[index+1].put(param_2)
+                if index == 0:
+                    if swapped:
+                        swaps_appected_main += 1
+                    total_swaps_main += 1
+            for index in range (self.num_islands):
+                    self.event[index].set()
+                    self.wait_island[index].clear()                 
 
+        for index in range(0,self.num_islands):
+            self.islands[index].join()
+        # self.island_queue.join()          '''
 
 if __name__ == "__main__":
     start = time.time()
-    a = distributed_surrogate_EA(pop_size=100,dim=50,bounds=[-5,5],problem=2,num_evals=4500,num_islands=3,surrogate_topology=1,use_surrogate=True,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
+    a = distributed_surrogate_EA(pop_size=100,dim=2,bounds=[-5,5],problem=1,num_evals=9000,num_islands=3,surrogate_topology=1,use_surrogate=False,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
     a.evolve_islands()
     print('Time Taken= ',(time.time()-start)/60 ,"Minutes")
+
