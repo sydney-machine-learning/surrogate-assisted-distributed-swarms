@@ -7,7 +7,7 @@ import time
 import matplotlib.pyplot as plt
 import math
 from keras.models import Sequential
-from keras.layers import Activation, Dense, Dropout
+from keras.layers import Activation, Dense, Dropout , LeakyReLU
 from keras.objectives import MSE, MAE
 from keras.callbacks import EarlyStopping
 from keras.models import model_from_json
@@ -60,14 +60,12 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
 
     def create_model(self):
         krnn = Sequential()
-        print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-        print("Input layer size", self.X.shape[1])
         if self.model_topology == 1:
-            krnn.add(Dense(64, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
-            krnn.add(Dense(16, kernel_initializer='uniform', activation='relu'))  #16
-            krnn.add(Dense(8, kernel_initializer='uniform', activation='relu'))
-            krnn.add(Dense(4, kernel_initializer='uniform', activation='relu'))
-            krnn.add(Dense(2, kernel_initializer='uniform', activation='relu'))
+            krnn.add(Dense(24, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
+            krnn.add(Dense(10, kernel_initializer='uniform', activation='relu'))  #16
+            # krnn.add(Dense(8, kernel_initializer='uniform', activation='relu'))
+            # krnn.add(Dense(4, kernel_initializer='uniform', activation='relu'))
+            # krnn.add(Dense(2, kernel_initializer='uniform', activation='relu'))
 
         if self.model_topology == 2:
             krnn.add(Dense(120, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
@@ -77,7 +75,9 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
             krnn.add(Dense(200, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
             krnn.add(Dense(50, kernel_initializer='uniform', activation='relu'))  #16
 
-        krnn.add(Dense(1, kernel_initializer ='uniform', activation='sigmoid'))
+        krnn.add(Dense(1, kernel_initializer ='uniform'))
+        # krnn.add(LeakyReLU(alpha=0.2))
+
         return krnn
 
     def train(self, model_signature):
@@ -113,11 +113,11 @@ class surrogate: #General Class for surrogate models for predicting likelihood(h
             self.krnn.compile(loss='mse', optimizer='adam', metrics=['mse'])
             # print('Input data :',X_train)
             # print('Output data ',y_train.ravel())
-            print("NN",self.krnn.summary())
-            train_log = self.krnn.fit(X_train, y_train.ravel(), batch_size=50, epochs=500, validation_split=0.1, verbose=0, callbacks=[early_stopping])
+            # print("NN",self.krnn.summary())
+            train_log = self.krnn.fit(X_train, y_train.ravel(), batch_size=50, epochs=30, validation_split=0.1, verbose=0, callbacks=[early_stopping])
 
             scores = self.krnn.evaluate(X_test, y_test.ravel(), verbose = 0)
-            print("scores",scores)
+            # print("scores",scores)
             # print("%s: %.5f" % (self.krnn.metrics_names[1], scores[1]))
 
             self.krnn.save(self.path+'/model_krnn_%s_.h5' %self.model_signature)
@@ -214,7 +214,6 @@ class surrogate_EA(multiprocessing.Process):
         self.use_surrogate = use_surrogate
         self.compare_surrogate = compare_surrogate
         self.surrogate_topology = surrogate_topology
-        
         self.path = path
         
 
@@ -292,7 +291,7 @@ class surrogate_EA(multiprocessing.Process):
             
             score_list.append(self.g_best_score)
             eval_list.append(evals)
-            print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
+            # print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
 
             # self.event.clear()
 
@@ -314,7 +313,7 @@ class surrogate_EA(multiprocessing.Process):
                 #surr_train_set = np.zeros((1, self.num_param+1))
                 ku = random.uniform(0,1)
                 if ku<self.surrogate_prob and evals >= self.surrogate_interval+1 :
-                    
+
                     is_true_fit = False
                      
                     # Create the model when there was no previously assigned model for surrogate
@@ -339,6 +338,8 @@ class surrogate_EA(multiprocessing.Process):
                     surr_mov_ave = (surg_fit_list[idx,2] + surg_fit_list[idx-1,2]+ surg_fit_list[idx-2,2])/3
                     #surr_proposal = (surrogate_pred * 0.5) + (  surr_mov_ave * 0.5)
                     surr_proposal = surrogate_pred
+                    # if i<10:
+                        # print("NN OUTPUT",surr_proposal , "Actual", self.evaluate(w_proposal))
 
 
                     if self.compare_surrogate is True:
@@ -371,12 +372,32 @@ class surrogate_EA(multiprocessing.Process):
                 error = surr_proposal
                 # print(i,error)
                 if error < self.p_best_score[i]:
-                    self.p_best_score[i] = error
-                    self.p_best[i] = copy.copy(self.position[i])
+                    if is_true_fit==False :
+                        
+                        actual_err = self.evaluate(w_proposal)
+                        
+                        if actual_err<self.p_best_score[i] :
+                            
+                            self.p_best_score[i] = actual_err
+                            self.p_best[i] = copy.copy(self.position[i])
+                        
+                    else:
+                        self.p_best_score[i] = error
+                        self.p_best[i] = copy.copy(self.position[i])
 
                 if error < self.g_best_score:
-                    self.g_best_score = error
-                    self.g_best = copy.copy(self.position[i])   
+                    
+                    if is_true_fit==False :
+                        
+                        actual_err = self.evaluate(w_proposal)
+                        
+                        if actual_err<self.g_best_score:
+                            self.g_best_score = actual_err
+                            self.g_best = copy.copy(self.position[i])   
+
+                    else:        
+                        self.g_best_score = error
+                        self.g_best = copy.copy(self.position[i])   
 
                 idx += 1    
                        
@@ -399,7 +420,7 @@ class surrogate_EA(multiprocessing.Process):
                 #self.parameter_queue.put(param)
 
                 surr_train = surr_train_set[0:count_real, :]
-                print("Total Data Collected in island_id:",self.island_id,":",count_real)
+                # print("Total Data Collected in island_id:",self.island_id,":",count_real)
 
                 #self.surrogate_parameter_queue.put(all_param)
 
@@ -415,7 +436,6 @@ class surrogate_EA(multiprocessing.Process):
                 #print("model_signature updated")
 
                 if self.model_signature==1.0:
-                    print('hey hey heyyyyy')
                     # # print 'min ', self.minY, ' max ', self.maxY
                     dummy_X = np.zeros((1,1))
                     dummy_Y = np.zeros((1,1))
@@ -427,7 +447,6 @@ class surrogate_EA(multiprocessing.Process):
                 self.surrogate_init,  nn_predict  = surrogate_model.predict(self.g_best.reshape(1,self.g_best.shape[0]), False)
                 #del surr_train_set
                 trainset_empty = True 
-                #np.savetxt(self.folder+'/surrogate/traindata_'+ str(self.island_id) +'_'+str(local_model_signature)    +'_.txt', surr_train_set)
                 count_real = 0      
 
 
@@ -444,43 +463,6 @@ class surrogate_EA(multiprocessing.Process):
         print("Island: {} chain dead!".format(self.island_id))
         self.signal_main.set()
         return    
-
-            # # Updating gbest , pbest
-            # for i in range(self.pop_size):
-
-            #     if score[i]<self.p_best_score[i]:
-            #         self.p_best[i]=copy.copy(self.position[i])
-            #         self.p_best_score[i] = score[i]
-
-            #     if score[i]<self.g_best_score:
-            #         self.g_best_score = score[i]
-            #         self.g_best = copy.copy(self.position[i])
-
-
-            # print("Best Score:",self.g_best_score)
-
-
-            # if (evals % self.swap_interval == 0 ): # interprocess (island) communication for exchange of neighbouring best_swarm_pos
-            #     param = self.g_best
-            #     self.parameter_queue.put(param)
-            #     self.signal_main.set()
-            #     self.event.clear()
-            #     self.event.wait()
-            #     result =  self.parameter_queue.get()
-            #     self.g_best = result 
-            #     self.position[0] = self.g_best.copy()
-
-            # evals+=self.pop_size
-            # print("Evals=",evals)
-        #     score_list.append(self.g_best)
-        #     eval_list.append(evals)
-        #     if len(score_list)>100:
-        #         if np.all(score_list[-20:][0]==score_list[-10:]):
-        #             print("Stopping due to probable saturation at evals:",evals)
-        #             break
-
-        # plt.plot(eval_list,score_list)
-        # plt.show()
 
 
 class distributed_surrogate_EA:
@@ -503,7 +485,7 @@ class distributed_surrogate_EA:
         self.swap_interval = pop_size #means 1 iteration
 
         # Surrogate Variables
-        self.surrogate_interval = 10*self.pop_size
+        self.surrogate_interval = 15*self.pop_size
         self.surrogate_prob = 0.5
         self.surrogate_resume = [multiprocessing.Event() for i in range(self.num_islands)]
         self.surrogate_start = [multiprocessing.Event() for i in range(self.num_islands)]
@@ -562,14 +544,8 @@ class distributed_surrogate_EA:
     def evolve_islands(self): 
         
         self.initialize_islands()
-        swap_proposal = np.ones(self.num_islands-1)
+        # swap_proposal = np.ones(self.num_islands-1)
  
-        # create parameter holders for paramaters that will be swapped
-        #replica_param = np.zeros((self.num_islands, self.num_param))  
-        #lhood = np.zeros(self.num_islands)
-        # Define the starting and ending of MCMC Chains
-        start = 0
-        end = self.island_numevals
         #number_exchange = np.zeros(self.num_islands) 
 
         for j in range(0,self.num_islands):        
@@ -580,7 +556,7 @@ class distributed_surrogate_EA:
 
         swaps_appected_main =0
         total_swaps_main =0
-        #for i in range(int(self.island_numevals/self.swap_interval)):
+
         for i in range(int(self.island_numevals/self.surrogate_interval) - 1):
             count = 0
             # checking if the processes are still alive
@@ -592,7 +568,7 @@ class distributed_surrogate_EA:
             if count == self.num_islands:
                 break
 
-            print("Waiting for the swapping signals.")
+            # print("Waiting for the swapping signals.")
             timeout_count = 0
             for index in range(0,self.num_islands): 
                 flag = self.wait_island[index].wait()
@@ -617,15 +593,15 @@ class distributed_surrogate_EA:
                 """
                 all_param =   np.empty((1,self.dim+1))
                 for index in range(0,self.num_islands):
-                    print('starting surrogate')
+                    # print('starting surrogate')
                     queue_surr=  self.surrogate_parameter_queues[index] 
                     surr_data = queue_surr.get() 
-                    #print("Shape of surr_data:",surr_data.shape)
+                    # print("surr_data:",surr_data)
                     #print("all_param.shape:",all_param.shape)
                     all_param =   np.concatenate([all_param,surr_data],axis=0) 
-                print("Shape of all_param Collected :",all_param.shape)
+                # print("Shape of all_param Collected :",all_param.shape)
                 data_train = all_param[1:,:]  
-                print("Shape of Data Collected :",data_train.shape)
+                # print("Shape of Data Collected :",data_train.shape)
                 self.surrogate_trainer(data_train) 
 
                 for index in range (self.num_islands):
@@ -648,9 +624,6 @@ class distributed_surrogate_EA:
             self.surrogate_parameter_queues[i].close()
             self.surrogate_parameter_queues[i].join_thread()
 
-
-        # swapping_percent = self.num_swap*100/self.total_swap_proposals
-        # print("Swapping_Percent:",swapping_percent)
 
 
 '''
@@ -701,7 +674,7 @@ class distributed_surrogate_EA:
 
 if __name__ == "__main__":
     start = time.time()
-    a = distributed_surrogate_EA(pop_size=100,dim=2,bounds=[-5,5],problem=1,num_evals=9000,num_islands=3,surrogate_topology=1,use_surrogate=False,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
+    a = distributed_surrogate_EA(pop_size=30,dim=20,bounds=[-5,5],problem=2,num_evals=94500,num_islands=3,surrogate_topology=1,use_surrogate=False,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
     a.evolve_islands()
     print('Time Taken= ',(time.time()-start)/60 ,"Minutes")
 
