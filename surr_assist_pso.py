@@ -215,6 +215,8 @@ class surrogate_EA(multiprocessing.Process):
         self.compare_surrogate = compare_surrogate
         self.surrogate_topology = surrogate_topology
         self.path = path
+        self.surg_fit_list = [np.zeros((self.num_evals * 10,3)) for k in range(self.pop_size)]
+        self.index_list = [0 for k in range(self.pop_size)]
         
 
     def evaluate(self,position):
@@ -291,7 +293,7 @@ class surrogate_EA(multiprocessing.Process):
             
             score_list.append(self.g_best_score)
             eval_list.append(evals)
-            # print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
+            print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
 
             # self.event.clear()
 
@@ -312,6 +314,8 @@ class surrogate_EA(multiprocessing.Process):
                 #if trainset_empty == True:
                 #surr_train_set = np.zeros((1, self.num_param+1))
                 ku = random.uniform(0,1)
+                if not self.use_surrogate:
+                    ku = 2
                 if ku<self.surrogate_prob and evals >= self.surrogate_interval+1 :
 
                     is_true_fit = False
@@ -335,11 +339,11 @@ class surrogate_EA(multiprocessing.Process):
                         surrogate_pred,  nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]), True)
                         # print("ENTERED CONDITION 3")
                         #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
-                    surr_mov_ave = (surg_fit_list[idx,2] + surg_fit_list[idx-1,2]+ surg_fit_list[idx-2,2])/3
-                    #surr_proposal = (surrogate_pred * 0.5) + (  surr_mov_ave * 0.5)
-                    surr_proposal = surrogate_pred
-                    # if i<10:
-                        # print("NN OUTPUT",surr_proposal , "Actual", self.evaluate(w_proposal))
+                    surr_mov_ave = ((self.surg_fit_list[i])[self.index_list[i],2] + (self.surg_fit_list[i])[self.index_list[i] - 1,2]+ (self.surg_fit_list[i])[self.index_list[i] - 2,2])/3
+                    surr_proposal = (surrogate_pred * 0.5) + (  surr_mov_ave * 0.5)
+
+                    if i<10:
+                        print("NN OUTPUT",surr_proposal , "Actual", self.evaluate(w_proposal))
 
 
                     if self.compare_surrogate is True:
@@ -348,13 +352,13 @@ class surrogate_EA(multiprocessing.Process):
                         fitness_proposal_true = 0
 
                     surrogate_counter += 1
-                    surg_fit_list[idx+1,0] =  fitness_proposal_true
-                    surg_fit_list[idx+1,1] = surr_proposal
-                    surg_fit_list[idx+1,2] = surr_mov_ave
+                    (self.surg_fit_list[i])[self.index_list[i]+1,0] =  fitness_proposal_true
+                    (self.surg_fit_list[i])[self.index_list[i]+1,1]= surr_proposal
+                    (self.surg_fit_list[i])[self.index_list[i]+1,2] = surr_mov_ave
                 else:
                     is_true_fit = True
                     trainset_empty = False
-                    surg_fit_list[idx+1,1] =  np.nan
+                    (self.surg_fit_list[i])[self.index_list[i]+1,1] =  np.nan
                     surr_proposal = self.evaluate(w_proposal)
                     fitness_arr = np.array([surr_proposal])
                     X, Y = w_proposal,fitness_arr
@@ -362,11 +366,11 @@ class surrogate_EA(multiprocessing.Process):
                     Y = Y.reshape(1, Y.shape[0])
                     param_train = np.concatenate([X, Y],axis=1)
                     #surr_train_set = np.vstack((surr_train_set, param_train))
-                    surg_fit_list[idx+1,0] = surr_proposal
-                    surg_fit_list[idx+1,2] = surr_proposal
-
-                    surr_train_set[count_real, :] = param_train
-                    count_real = count_real +1
+                    (self.surg_fit_list[i])[self.index_list[i]+1,0] = surr_proposal
+                    (self.surg_fit_list[i])[self.index_list[i]+1,2] = surr_proposal
+                    if self.use_surrogate:
+                        surr_train_set[count_real, :] = param_train
+                        count_real = count_real +1
                 #...................................................# 
                 #swarm[i].error = self.fit_func(swarm[i].position)
                 error = surr_proposal
@@ -399,7 +403,7 @@ class surrogate_EA(multiprocessing.Process):
                         self.g_best_score = error
                         self.g_best = copy.copy(self.position[i])   
 
-                idx += 1    
+                self.index_list[i] += 1  
                        
             
             #SWAPPING PREP
@@ -414,7 +418,7 @@ class surrogate_EA(multiprocessing.Process):
                 best_swarm_pos = result 
                 swarm[0].position = best_swarm_pos.copy()
             """
-            if evals % self.surrogate_interval == 0 and evals != 0:
+            if evals % self.surrogate_interval == 0 and evals != 0 and self.use_surrogate:
                 #print("\n\nSample:{}\n\n".format(i))
                 # add parameters to the swap param queue and surrogate params queue
                 #self.parameter_queue.put(param)
@@ -556,64 +560,64 @@ class distributed_surrogate_EA:
 
         swaps_appected_main =0
         total_swaps_main =0
+        if self.use_surrogate:
+            for i in range(int(self.island_numevals/self.surrogate_interval) - 1):
+                count = 0
+                # checking if the processes are still alive
+                for index in range(self.num_islands):
+                    if not self.islands[index].is_alive():
+                        count+=1
+                        self.wait_island[index].set() 
 
-        for i in range(int(self.island_numevals/self.surrogate_interval) - 1):
-            count = 0
-            # checking if the processes are still alive
-            for index in range(self.num_islands):
-                if not self.islands[index].is_alive():
-                    count+=1
-                    self.wait_island[index].set() 
+                if count == self.num_islands:
+                    break
 
-            if count == self.num_islands:
-                break
-
-            # print("Waiting for the swapping signals.")
-            timeout_count = 0
-            for index in range(0,self.num_islands): 
-                flag = self.wait_island[index].wait()
-                if flag: 
-                    timeout_count += 1
-            # If signals from all the islands are not received then skip the swap and continue the loop.
-            """
-            if timeout_count != self.num_islands: 
-                print("Skipping the swap")
-                continue
-            """ 
-            if timeout_count == self.num_islands:
-                """ 
-                for index in range(0,self.num_islands-1): 
-                    param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
-                    self.parameter_queue[index].put(param_1)
-                    self.parameter_queue[index+1].put(param_2)
-                    if index == 0:
-                        if swapped:
-                            swaps_appected_main += 1
-                        total_swaps_main += 1
+                # print("Waiting for the swapping signals.")
+                timeout_count = 0
+                for index in range(0,self.num_islands): 
+                    flag = self.wait_island[index].wait()
+                    if flag: 
+                        timeout_count += 1
+                # If signals from all the islands are not received then skip the swap and continue the loop.
                 """
-                all_param =   np.empty((1,self.dim+1))
-                for index in range(0,self.num_islands):
-                    # print('starting surrogate')
-                    queue_surr=  self.surrogate_parameter_queues[index] 
-                    surr_data = queue_surr.get() 
-                    # print("surr_data:",surr_data)
-                    #print("all_param.shape:",all_param.shape)
-                    all_param =   np.concatenate([all_param,surr_data],axis=0) 
-                # print("Shape of all_param Collected :",all_param.shape)
-                data_train = all_param[1:,:]  
-                # print("Shape of Data Collected :",data_train.shape)
-                self.surrogate_trainer(data_train) 
+                if timeout_count != self.num_islands: 
+                    print("Skipping the swap")
+                    continue
+                """ 
+                if timeout_count == self.num_islands:
+                    """ 
+                    for index in range(0,self.num_islands-1): 
+                        param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
+                        self.parameter_queue[index].put(param_1)
+                        self.parameter_queue[index+1].put(param_2)
+                        if index == 0:
+                            if swapped:
+                                swaps_appected_main += 1
+                            total_swaps_main += 1
+                    """
+                    all_param =   np.empty((1,self.dim+1))
+                    for index in range(0,self.num_islands):
+                        # print('starting surrogate')
+                        queue_surr=  self.surrogate_parameter_queues[index] 
+                        surr_data = queue_surr.get() 
+                        # print("surr_data:",surr_data)
+                        #print("all_param.shape:",all_param.shape)
+                        all_param =   np.concatenate([all_param,surr_data],axis=0) 
+                    # print("Shape of all_param Collected :",all_param.shape)
+                    data_train = all_param[1:,:]  
+                    # print("Shape of Data Collected :",data_train.shape)
+                    self.surrogate_trainer(data_train) 
 
-                for index in range (self.num_islands):
-                        self.event[index].set()
-                        self.wait_island[index].clear()
+                    for index in range (self.num_islands):
+                            self.event[index].set()
+                            self.wait_island[index].clear()
 
-            elif timeout_count == 0:
-                break
-            else:
-                print("Skipping the swap")             
+                elif timeout_count == 0:
+                    break
+                else:
+                    print("Skipping the swap")             
 
-            
+                
             
         for index in range(0,self.num_islands):
             self.islands[index].join()
@@ -628,13 +632,11 @@ class distributed_surrogate_EA:
 
 '''
         self.initialize_islands()
-
         for j in range(0,self.num_islands):        
             self.wait_island[j].clear()
             self.event[j].clear()
             self.islands[j].start()
         #SWAP PROCEDURE
-
         swaps_appected_main =0
         total_swaps_main =0
         for i in range(int(self.island_numevals/self.swap_interval)):
@@ -643,19 +645,15 @@ class distributed_surrogate_EA:
                 if not self.islands[index].is_alive():
                     count+=1
                     self.wait_island[index].set() 
-
             if count == self.num_islands:
                 break 
-
             timeout_count = 0
             for index in range(0,self.num_islands): 
                 flag = self.wait_island[index].wait()
                 if flag: 
                     timeout_count += 1
-
             if timeout_count != self.num_islands: 
                 continue
-
             for index in range(0,self.num_islands-1): 
                 param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
                 self.parameter_queue[index].put(param_1)
@@ -667,14 +665,14 @@ class distributed_surrogate_EA:
             for index in range (self.num_islands):
                     self.event[index].set()
                     self.wait_island[index].clear()                 
-
         for index in range(0,self.num_islands):
             self.islands[index].join()
         # self.island_queue.join()          '''
 
 if __name__ == "__main__":
     start = time.time()
-    a = distributed_surrogate_EA(pop_size=30,dim=20,bounds=[-5,5],problem=2,num_evals=94500,num_islands=3,surrogate_topology=1,use_surrogate=False,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
+    a = distributed_surrogate_EA(pop_size=100,dim=30,bounds=[-5,5],problem=2,num_evals=49500,num_islands=3,surrogate_topology=1,use_surrogate=True,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
     a.evolve_islands()
     print('Time Taken= ',(time.time()-start)/60 ,"Minutes")
 
+    # add argument of island_swap bool 
