@@ -6,173 +6,105 @@ import random
 import time
 import matplotlib.pyplot as plt
 import math
-from keras.models import Sequential
-from keras.layers import Activation, Dense, Dropout , LeakyReLU
-from keras.objectives import MSE, MAE
-from keras.callbacks import EarlyStopping
-from keras.models import model_from_json
-from keras.models import load_model
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-# surrogate("krnn", X , Y , 0 , 0 , 0 , 0 , self.folder, self.save_surrogate_data, self.surrogate_topology )
+import torch
+import torch.nn as nn
+from torch.utils import data
+import torch.optim as optim
+import torch.nn.functional as F
 
-class surrogate: #General Class for surrogate models for predicting likelihood(here the fitness) given the weights
+class model(nn.Module):
 
-    def __init__(self, model, X, Y,  path, save_surrogate_data, model_topology):
+  def __init__(self , in_size , h_size):
+    super().__init__()
 
-        self.path = path + '/surrogate'
-        # indices = np.where(Y==np.inf)[0]
-        # X = np.delete(X, indices, axis=0)
-        # Y = np.delete(Y, indices, axis=0)
-        self.model_signature = 0.0
-        self.X = X
-        self.Y = Y
-        # self.min_Y = min_Y
-        # self.max_Y = max_Y
-        # self.min_X = min_X
-        # self.max_X = max_X
+    self.fc1=nn.Linear(in_features=in_size, out_features=h_size)
+    self.fc2=nn.Linear(in_features=h_size, out_features=int(h_size/2))
+    self.out=nn.Linear(in_features=int(h_size/2), out_features=1)
+  
+  def forward(self, t):
 
-        self.model_topology = model_topology
+    t=self.fc1(t)
+    t=F.relu(t)
+    t=F.dropout(t , p=0.5)
+    t=self.fc2(t)
+    t=F.relu(t)
+    t=F.dropout(t , p=0.5)
+    t=self.out(t)
+    t=torch.sigmoid(t)
 
-        self.save_surrogate_data =  save_surrogate_data
+    return t
 
-        if model=="gp":
-            self.model_id = 1
-        elif model == "nn":
-            self.model_id = 2
-        elif model == "krnn": # keras nn
-            self.model_id = 3
-            self.krnn = Sequential()
-        else:
-            print("Invalid Model!")
+class dataset_class(data.Dataset):
+    def __init__(self, particle , fitness ):
+        self.particle = particle
+        self.fitness = fitness
 
-    # This function is ignored
-    # def normalize(self, X):
-    #     maxer = np.zeros((1,X.shape[1]))
-    #     miner = np.ones((1,X.shape[1]))
+    def __getitem__(self, index):
 
-    #     for i in range(X.shape[1]):
-    #         maxer[0,i] = max(X[:,i])
-    #         miner[0,i] = min(X[:,i])
-    #         X[:,i] = (X[:,i] - min(X[:,i]))/(max(X[:,i]) - min(X[:,i]))
-    #     return X, maxer, miner
+        return self.particle[index], self.fitness[index] 
 
-    def create_model(self):
-        krnn = Sequential()
-        if self.model_topology == 1:
-            krnn.add(Dense(24, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
-            krnn.add(Dense(10, kernel_initializer='uniform', activation='relu'))  #16
-            # krnn.add(Dense(8, kernel_initializer='uniform', activation='relu'))
-            # krnn.add(Dense(4, kernel_initializer='uniform', activation='relu'))
-            # krnn.add(Dense(2, kernel_initializer='uniform', activation='relu'))
-
-        if self.model_topology == 2:
-            krnn.add(Dense(120, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
-            krnn.add(Dense(40, kernel_initializer='uniform', activation='relu'))  #16
-
-        if self.model_topology == 3:
-            krnn.add(Dense(200, input_dim=self.X.shape[1], kernel_initializer='uniform', activation ='relu')) #64
-            krnn.add(Dense(50, kernel_initializer='uniform', activation='relu'))  #16
-
-        krnn.add(Dense(1, kernel_initializer ='uniform'))
-        # krnn.add(LeakyReLU(alpha=0.2))
-
-        return krnn
-
-    def train(self, model_signature):
-        #X_train, X_test, y_train, y_test = train_test_split(self.X, self.Y, test_size=0.10, random_state=42)
-
-        X_train = self.X
-        X_test = self.X
-        y_train = self.Y
-        y_test =  self.Y #train_test_split(self.X, self.Y, test_size=0.10, random_state=42)
-
-        self.model_signature = model_signature
+    def __len__(self):
+        return (self.particle.shape[0])
 
 
-        if self.model_id is 3:
-            if self.model_signature==1.0:
-                self.krnn = self.create_model()
-            else:
-                while True:
-                    try:
-                        # You can see two options to initialize model now. If you uncomment the first line then the model id loaded at every time with stored weights. On the other hand if you uncomment the second line a new model will be created every time without the knowledge from previous training. This is basically the third scheme we talked about for surrogate experiments.
-                        # To implement the second scheme you need to combine the data from each training.
+class Surrogate():
+    def __init__(self, in_size , h_size):
+        
+        self.in_size = in_size
+        self.h_size = h_size
 
-                        self.krnn = load_model(self.path+'/model_krnn_%s_.h5'%(model_signature-1))
-                        #self.krnn = self.create_model()
-                        break
-                    except EnvironmentError as e:
-                        # pass
-                        # # print(e.errno)
-                        # time.sleep(1)
-                        print ('ERROR in loading latest surrogate model, loading previous one in TRAIN')
-
-            early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-            self.krnn.compile(loss='mse', optimizer='adam', metrics=['mse'])
-            # print('Input data :',X_train)
-            # print('Output data ',y_train.ravel())
-            # print("NN",self.krnn.summary())
-            train_log = self.krnn.fit(X_train, y_train.ravel(), batch_size=50, epochs=30, validation_split=0.1, verbose=0, callbacks=[early_stopping])
-
-            scores = self.krnn.evaluate(X_test, y_test.ravel(), verbose = 0)
-            # print("scores",scores)
-            # print("%s: %.5f" % (self.krnn.metrics_names[1], scores[1]))
-
-            self.krnn.save(self.path+'/model_krnn_%s_.h5' %self.model_signature)
-            # print("Saved model to disk  ", self.model_signature)
- 
-
-            results = np.array([scores[1]])
-            # print(results, 'train-metrics')
+        self.surrogate_model = model(in_size , h_size)
 
 
-            with open(('%s/train_metrics.txt' % (self.path)),'ab') as outfile:
-                np.savetxt(outfile, results)
-
-            if self.save_surrogate_data is True:
-                with open(('%s/learnsurrogate_data/X_train.csv' % (self.path)),'ab') as outfile:
-                    np.savetxt(outfile, X_train)
-                with open(('%s/learnsurrogate_data/Y_train.csv' % (self.path)),'ab') as outfile:
-                    np.savetxt(outfile, y_train)
-                with open(('%s/learnsurrogate_data/X_test.csv' % (self.path)),'ab') as outfile:
-                    np.savetxt(outfile, X_test)
-                with open(('%s/learnsurrogate_data/Y_test.csv' % (self.path)),'ab') as outfile:
-                    np.savetxt(outfile, y_test)
-
-    def predict(self, X_load, initialized):
-
-
-        if self.model_id == 3:
-
-            if initialized == False:
-                model_sign = np.loadtxt(self.path+'/model_signature.txt')
-                self.model_signature = model_sign
-                while True:
-                    try:
-                        self.krnn = load_model(self.path+'/model_krnn_%s_.h5'%self.model_signature)
-                        # # print (' Tried to load file : ', self.path+'/model_krnn_%s_.h5'%self.model_signature)
-                        break
-                    except EnvironmentError as e:
-                        print(e)
-                        # pass
-
-                # self.krnn.compile(loss='mse', optimizer='rmsprop', metrics=['mse'])
-                krnn_prediction =-1.0
-                prediction = -1.0
-
-            else:
-                krnn_prediction = self.krnn.predict(X_load)[0]
-                # print('nn_out',self.krnn.predict(X_load))
-                prediction = krnn_prediction#*(self.max_Y[0,0]-self.min_Y[0,0]) + self.min_Y[0,0]
+    def trainer(self, particle , fitness , batch_size ):
             
-            return prediction, krnn_prediction
+        dataset = dataset_class(particle , fitness)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size= batch_size,drop_last=True, shuffle=True )
+
+        criterion = nn.MSELoss()
+        optimizer= optim.Adam(self.surrogate_model.parameters(),lr=0.001,betas=(0.5, 0.999))
+
+        self.surrogate_model.train()
+        print("Training start")
+        start = time.time()
+        num_epoch=20
+
+        for epoch in range(num_epoch):
+
+            for i, data in enumerate(dataloader, 0):
+
+                self.surrogate_model.zero_grad()
+
+                particle , fitness = data
+                particle , fitness = particle.type(torch.FloatTensor) , fitness.type(torch.FloatTensor)
+                model_out = self.surrogate_model(particle)
+
+                err = criterion(model_out, fitness.reshape(-1,1))
+                
+                err.backward()
+
+                optimizer.step()
+
+        torch.save(self.surrogate_model.state_dict(), "/home/yash/Desktop/unsw/model" )
+        
+        
+        out = self.surrogate_model(particle)
+        error = criterion(out , fitness.reshape(-1,1))
+        print("Training done in",(time.time()-start)/60,"mins Error=",error)
+        # save error
+
+    def predict(self,particle):
+        
+        self.surrogate_model.eval()
+        particle = torch.tensor(particle).type(torch.FloatTensor)
+        return self.surrogate_model(particle)
 
 
 class surrogate_EA(multiprocessing.Process):
     
-    def __init__(self,pop_size,dim,bounds,problem,num_evals,swap_interval,parameter_queue,signal_main,event,island_id,surrogate_parameter_queues,surrogate_start,surrogate_resume,surrogate_interval,surrogate_prob,save_surrogatedata,use_surrogate,compare_surrogate,surrogate_topology,path):
+    def __init__(self,pop_size,dim,bounds,problem,num_evals,swap_interval,parameter_queue,signal_main,event,island_id, model , normaliser_list , surrogate_parameter_queues,surrogate_start,surrogate_resume,surrogate_interval,surrogate_prob,compare_surrogate,path,exp):
         
         multiprocessing.Process.__init__(self)
         
@@ -194,31 +126,35 @@ class surrogate_EA(multiprocessing.Process):
         
         self.problem = problem
         self.p_best = copy.copy(self.position)
-        self.p_best_score = self.evaluate(self.position)
+        self.p_best_score = np.zeros((self.pop_size,))
+        for i in range(self.pop_size):
+            self.p_best_score[i] = self.evaluate(self.position[i])
+
+        self.exp = exp
         
         self.g_best_score = 999999 #initialize
-        self.g_best = self.p_best[0]  #initialize
+        self.g_best = copy.copy(self.p_best[0]) #initialize
 
         for i in range(self.pop_size)  :
             if self.p_best_score[i]<self.g_best_score:
-                self.g_best_score = self.p_best_score[i]
+                self.g_best_score = copy.copy(self.p_best_score[i])
                 self.g_best = copy.copy(self.position[i])
 
         # Surrogate Variables
         self.surrogate_parameter_queue = surrogate_parameter_queues
-        self.surrogate_start = surrogate_start
-        self.surrogate_resume = surrogate_resume
+        self.ev22 = surrogate_start
+        self.ev1 = surrogate_resume
         self.surrogate_interval = surrogate_interval
         self.surrogate_prob = surrogate_prob
-        self.save_surrogate_data = save_surrogatedata
-        self.use_surrogate = use_surrogate
         self.compare_surrogate = compare_surrogate
-        self.surrogate_topology = surrogate_topology
         self.path = path
-        self.surg_fit_list = [np.zeros((self.num_evals * 10,3)) for k in range(self.pop_size)]
+        self.surg_fit_list = [np.zeros((int(self.num_evals/10) ,3)) for k in range(self.pop_size)]
         self.index_list = [0 for k in range(self.pop_size)]
-        
 
+        self.model = model
+        normaliser_list.append(self.g_best_score)
+        self.normaliser_list = normaliser_list
+        
     def evaluate(self,position):
         pop_size = position.reshape(-1,self.dim).shape[0]
         problem = self.problem
@@ -229,19 +165,10 @@ class surrogate_EA(multiprocessing.Process):
                 fit=0
                 # print('1',position)
                 for j in range(self.dim -1):
-                    fit += (100.0*(position[j]**2 - position[j+1]**2)**2 + (position[j]-1.0)**2)
-
-            else:    
-                fit = np.zeros((pop_size,self.dim))
-                # print(position)
-                for i in range(pop_size):
-                    for j in range(self.dim -1):
-                        fit[i] = (100.0*(position[i,j]**2 - position[i,j+1]**2)**2 + (position[i,j]-1.0)**2)
-
-                fit = np.sum(fit,axis=1)    
+                    fit += (100.0*(position[j]**2 - position[j+1])**2 + (position[j]-1.0)**2)      
         
         elif problem ==2:  # ellipsoidal - sphere function
-            matrix = np.array([np.arange(1,self.dim+1),]*pop_size) # [1,2,3,4,5,6,7,8,9,10]
+            matrix = np.array([np.arange(1,self.dim+1),]*pop_size)
             if pop_size==1:
                 fit =((position**2)*matrix[0])
                 fit = np.sum(fit)
@@ -267,23 +194,39 @@ class surrogate_EA(multiprocessing.Process):
 
 
     def run(self):
+        if not os.path.exists('%s/surrogate/%s%s%s%s' % (self.path ,'problem=',self.problem,'dim=',self.dim)):
+            os.mkdir('%s/surrogate/%s%s%s%s' % (self.path ,'problem=',self.problem,'dim=',self.dim))
+            
+        if not os.path.exists('%s/surrogate/%s%s%s%s/%s' % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp )):
+            os.mkdir('%s/surrogate/%s%s%s%s/%s' % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ))
+            
+        if not os.path.exists('%s/surrogate/%s%s%s%s/%s/%s' % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ,self.island_id)):
+            os.mkdir('%s/surrogate/%s%s%s%s/%s/%s' % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ,self.island_id))
 
-        surrogate_model = None 
-        surrogate_counter = 0
         trainset_empty = True
         is_true_fit = True
-        surg_fit_list = np.zeros((self.num_evals * 10,3))
         surr_train_set = np.zeros((10000, self.dim+1))
-        local_model_signature = 0.0
-        self.surrogate_init = 0.0
-        evals=0
-        
-        count_real = 0
-        idx = 0
 
+        self.surrogate_metric = np.nan
+
+        self.evals=0
+
+        self.a=0
+        self.b=0
+        self.c=0
+        self.d=0
+
+        count_real = 0
+        idx = 0 
+        start = 0
+        print("SIZE", len(self.normaliser_list))
+        normaliser = max(self.normaliser_list)
+        print(normaliser)
         score_list = []
         eval_list = []
-        while evals<self.num_evals:
+        self.sp = []
+        self.sp1 = []
+        while self.evals<self.num_evals:
         
             r1 = np.random.rand(self.dim)
             r2 = np.random.rand(self.dim)
@@ -292,8 +235,11 @@ class surrogate_EA(multiprocessing.Process):
             c2=1.4        # social constant
             
             score_list.append(self.g_best_score)
-            eval_list.append(evals)
-            print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", evals )
+            eval_list.append(self.evals)
+            if self.evals!=0:            
+                print("G_BEST_SCORE" ,self.g_best_score ,"on", self.island_id,"island", self.evals , (time.time()-start )/60 , ts+tt+tu+tc ,"surr" , ts ,"surr p",tsp/60,"true"  , tt ,"t update", tu ,"t chain" , tc ,"extra evals",self.a )
+
+            start = time.time()
 
             # self.event.clear()
 
@@ -303,85 +249,71 @@ class surrogate_EA(multiprocessing.Process):
             self.velocity=w*self.velocity+vel_cognitive+vel_social
             self.position += self.velocity 
 
+            score = np.full((self.pop_size,1), 0 )
+
             # Evaluation
+            ts,tt,tu,tc = 0,0,0,0
+            tsp = 0
             for i in range(self.pop_size):
 
-                surrogate_X = self.g_best
-                best_surr_fit = self.g_best_score
-                surrogate_Y = np.array([best_surr_fit])
-                # proposed best parameters after the evaluation
                 w_proposal = self.position[i]
-                #if trainset_empty == True:
-                #surr_train_set = np.zeros((1, self.num_param+1))
+                
                 ku = random.uniform(0,1)
-                if not self.use_surrogate:
-                    ku = 2
-                if ku<self.surrogate_prob and evals >= self.surrogate_interval+1 :
+                if ku<self.surrogate_prob and self.evals >= self.surrogate_interval+1 :
 
+                    ts1 = time.time()
                     is_true_fit = False
-                     
-                    # Create the model when there was no previously assigned model for surrogate
-                    if surrogate_model == None:
-                        # Load the text saved before in the training surrogate func. in manager process 
-                        print("ENTERED CONDITION 1")
-                        surrogate_model = surrogate("krnn",surrogate_X.copy(),surrogate_Y.copy(), self.minx, self.maxx, self.minY, self.maxY, self.path, self.save_surrogate_data, self.surrogate_topology)
-                        surrogate_pred, nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]),False)
-                        # surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
 
-                    # Getting the initial predictions if the surrogate model has yet not been initialized     
-                    elif self.surrogate_init == 0.0:
-                        surrogate_pred,  nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]), False)
-                        print("ENTERED CONDITION 2")
-                        #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
+                    tsp1 = time.time()
+                    surrogate_pred = self.model.predict( w_proposal.reshape(-1,self.dim) )
+                    surrogate_pred = surrogate_pred.detach().numpy()[0][0]
+                    self.sp.append(surrogate_pred)
+                    
+                    tsp+=time.time()-tsp1
 
-                    # Getting the predictions if surrogate model is already initialized    
-                    else:
-                        surrogate_pred,  nn_predict = surrogate_model.predict(w_proposal.reshape(1,w_proposal.shape[0]), True)
-                        # print("ENTERED CONDITION 3")
-                        #surrogate_likelihood = surrogate_likelihood *(1.0/self.adapttemp)
                     surr_mov_ave = ((self.surg_fit_list[i])[self.index_list[i],2] + (self.surg_fit_list[i])[self.index_list[i] - 1,2]+ (self.surg_fit_list[i])[self.index_list[i] - 2,2])/3
-                    surr_proposal = (surrogate_pred * 0.5) + (  surr_mov_ave * 0.5)
+                    surr_proposal = (surrogate_pred*0.5 + surr_mov_ave*0.5)
 
-                    if i<10:
-                        print("NN OUTPUT",surr_proposal , "Actual", self.evaluate(w_proposal))
-
+                    self.sp1.append(surr_proposal)
 
                     if self.compare_surrogate is True:
                         fitness_proposal_true = self.evaluate(w_proposal)
                     else:
                         fitness_proposal_true = 0
 
-                    surrogate_counter += 1
-                    (self.surg_fit_list[i])[self.index_list[i]+1,0] =  fitness_proposal_true
+                    (self.surg_fit_list[i])[self.index_list[i]+1,0] =  fitness_proposal_true/normaliser
                     (self.surg_fit_list[i])[self.index_list[i]+1,1]= surr_proposal
                     (self.surg_fit_list[i])[self.index_list[i]+1,2] = surr_mov_ave
+                    ts = ts+ (time.time() - ts1)/60
                 else:
+                    tt1 = time.time()
                     is_true_fit = True
                     trainset_empty = False
                     (self.surg_fit_list[i])[self.index_list[i]+1,1] =  np.nan
-                    surr_proposal = self.evaluate(w_proposal)
+                    surr_proposal = self.evaluate(w_proposal)/normaliser
                     fitness_arr = np.array([surr_proposal])
                     X, Y = w_proposal,fitness_arr
                     X = X.reshape(1, X.shape[0])
                     Y = Y.reshape(1, Y.shape[0])
                     param_train = np.concatenate([X, Y],axis=1)
-                    #surr_train_set = np.vstack((surr_train_set, param_train))
                     (self.surg_fit_list[i])[self.index_list[i]+1,0] = surr_proposal
                     (self.surg_fit_list[i])[self.index_list[i]+1,2] = surr_proposal
-                    if self.use_surrogate:
-                        surr_train_set[count_real, :] = param_train
-                        count_real = count_real +1
-                #...................................................# 
-                #swarm[i].error = self.fit_func(swarm[i].position)
-                error = surr_proposal
-                # print(i,error)
+                    surr_train_set[count_real, :] = param_train
+                    count_real = count_real +1
+                    tt = tt+ (time.time() - tt1)/60
+
+                error = surr_proposal*normaliser
+                score[i] = surr_proposal*normaliser
+                
+                tu1 = time.time()                
                 if error < self.p_best_score[i]:
                     if is_true_fit==False :
-                        
+                        self.a+=1
+
                         actual_err = self.evaluate(w_proposal)
                         
                         if actual_err<self.p_best_score[i] :
-                            
+                            self.b+=1
                             self.p_best_score[i] = actual_err
                             self.p_best[i] = copy.copy(self.position[i])
                         
@@ -392,10 +324,9 @@ class surrogate_EA(multiprocessing.Process):
                 if error < self.g_best_score:
                     
                     if is_true_fit==False :
-                        
-                        actual_err = self.evaluate(w_proposal)
-                        
+                        self.c+=1
                         if actual_err<self.g_best_score:
+                            self.d+=1
                             self.g_best_score = actual_err
                             self.g_best = copy.copy(self.position[i])   
 
@@ -404,73 +335,86 @@ class surrogate_EA(multiprocessing.Process):
                         self.g_best = copy.copy(self.position[i])   
 
                 self.index_list[i] += 1  
-                       
-            
+                tu = tu+ (time.time()-tu1)/60
+
             #SWAPPING PREP
-            """
-            if (evals % self.swap_interval == 0 ): # interprocess (island) communication for exchange of neighbouring best_swarm_pos
-                param = best_swarm_pos
+            
+            if self.evals%self.swap_interval==0 and self.evals!=0 :
+                tc1 = time.time()
+                a = np.concatenate([self.position , score] , axis=1)
+                a = a[a[:,1].argsort()][:,:-1]
+                param = a[:(int(0.2*self.pop_size))]
                 self.parameter_queue.put(param)
-                self.signal_main.set()
-                self.event.clear()
-                self.event.wait()
-                result =  self.parameter_queue.get()
-                best_swarm_pos = result 
-                swarm[0].position = best_swarm_pos.copy()
-            """
-            if evals % self.surrogate_interval == 0 and evals != 0 and self.use_surrogate:
-                #print("\n\nSample:{}\n\n".format(i))
-                # add parameters to the swap param queue and surrogate params queue
-                #self.parameter_queue.put(param)
-
+                
                 surr_train = surr_train_set[0:count_real, :]
-                # print("Total Data Collected in island_id:",self.island_id,":",count_real)
-
-                #self.surrogate_parameter_queue.put(all_param)
 
                 self.surrogate_parameter_queue.put(surr_train)
-                # Pause the chain execution and signal main process
+                
                 self.signal_main.set()
-                # Wait for the main process to complete the swap and surrogate training
                 self.event.clear()
                 self.event.wait()
-                
-                model_sign = np.loadtxt(self.path+'/surrogate/model_signature.txt')
-                self.model_signature = model_sign
-                #print("model_signature updated")
 
-                if self.model_signature==1.0:
-                    # # print 'min ', self.minY, ' max ', self.maxY
-                    dummy_X = np.zeros((1,1))
-                    dummy_Y = np.zeros((1,1))
-                    surrogate_model = surrogate("krnn", dummy_X, dummy_Y, self.path, self.save_surrogate_data, self.surrogate_topology )
+                result =  self.parameter_queue.get()
+                best_swarm_pos = result 
+                self.position[(int(0.8*self.pop_size)):] = best_swarm_pos.copy()
 
-                    local_model_signature = local_model_signature +1  
 
-                # Initialize the surrogate
-                self.surrogate_init,  nn_predict  = surrogate_model.predict(self.g_best.reshape(1,self.g_best.shape[0]), False)
-                #del surr_train_set
                 trainset_empty = True 
                 count_real = 0      
+                tc= tc + (time.time() -tc1)/60
+
+                self.model.surrogate_model.load_state_dict(torch.load("/home/yash/Desktop/unsw/model"))
+
+            self.evals += self.pop_size
 
 
+        
+        with open(("%s/surrogate/sp.txt" % (self.path)),'ab') as outfile:
+           np.savetxt(outfile, self.sp)
+           
+        with open(("%s/surrogate/sp1.txt" % (self.path)),'ab') as outfile:
+           np.savetxt(outfile, self.sp1)
 
-            # epoch += 1
-            evals += self.pop_size
+        # os.makedirs("%s/surrogate/%s%s%s%s/%s/%s" % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ,self.island_id))
+        
+    #    a = np.zeros((1,3))
+    #    for i in range(self.pop_size):
+    #        a  = np.concatenate((self.surg_fit_list[i] , a))
+    #    b = a[~np.isnan(a).any(axis=1)]
+    #    c = b[~np.all(b == 0, axis=1)]
+    #    rmse = np.sqrt(np.mean((c[:,0]-c[:,1])**2))
+
+    #    with open(("%s/surrogate/%s%s%s%s/%s/%s/surr_metric.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ,self.island_id)),'ab') as outfile:
+    #        np.savetxt(outfile, [rmse])
+       
+    #    with open(("%s/surrogate/%s%s%s%s/%s/%s/surrogate_perf.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp ,self.island_id)),'ab') as outfile:
+    #        np.savetxt(outfile, c)
+
+        # with open(("%s/surrogate/%s%s%s%s/%s/%s/score_list.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, exp , self.island_id)),'ab') as outfile:
+        #   np.savetxt(outfile, score_list)
+
+        with open(("%s/surrogate/%s%s%s%s/%s/score_list.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, self.exp )),'ab') as outfile:
+            np.savetxt(outfile, [self.g_best_score])
+
+        # with open(("%s/surrogate/%s%s%s%s/%s/%s/extra_evals.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, exp , self.island_id)),'ab') as outfile:
+        #   np.savetxt(outfile, [self.a , self.b])
+
+        # with open(("%s/surrogate/%s%s%s%s/%s/%s/extra_evals.txt" % (self.path ,'problem=',self.problem,'dim=',self.dim, exp , self.island_id)),'ab') as outfile:
+        #   np.savetxt(outfile, [self.c , self.d])
 
 
-        print("Best particle:", self.g_best , 'of island', self.island_id)
+        # print("Best particle:", self.g_best , 'of island', self.island_id)
  
-        plt.plot(eval_list , score_list , label = self.island_id)
-        plt.show()
+        # plt.plot(eval_list , score_list , label = self.island_id)
+        # plt.show()
 
-        print("Island: {} chain dead!".format(self.island_id))
-        self.signal_main.set()
-        return    
+        # print("Island: {} chain dead!".format(self.island_id))
+        # self.signal_main.set()
+        return
 
 
 class distributed_surrogate_EA:
-    def __init__(self,pop_size,dim,bounds,problem,num_evals,num_islands,surrogate_topology,use_surrogate,compare_surrogate,save_surrogate_data,path):
+    def __init__(self,pop_size,dim,bounds,problem,num_evals,num_islands,interval,compare_surrogate,path,exp):
         
         self.pop_size = pop_size
         self.dim=dim
@@ -479,45 +423,40 @@ class distributed_surrogate_EA:
         self.num_islands = num_islands
         self.problem = problem
         self.islands = [] 
-        self.island_numevals = int(self.num_evals/self.num_islands) 
+        self.island_numevals = int(self.num_evals/self.num_islands)
 
         # create queues for transfer of parameters between process islands running in parallel 
         self.parameter_queue = [multiprocessing.Queue() for i in range(num_islands)]
         self.wait_island = [multiprocessing.Event() for i in range (self.num_islands)]
         self.event = [multiprocessing.Event() for i in range (self.num_islands)]
 
-        self.swap_interval = pop_size #means 1 iteration
+        self.swap_interval = interval*self.pop_size
 
         # Surrogate Variables
-        self.surrogate_interval = 15*self.pop_size
+        self.surrogate_interval = interval*self.pop_size
         self.surrogate_prob = 0.5
-        self.surrogate_resume = [multiprocessing.Event() for i in range(self.num_islands)]
-        self.surrogate_start = [multiprocessing.Event() for i in range(self.num_islands)]
+        self.ev1 = [multiprocessing.Event() for i in range(self.num_islands)]
+        self.ev2 = [multiprocessing.Event() for i in range(self.num_islands)]
         self.surrogate_parameter_queues = [multiprocessing.Queue() for i in range(self.num_islands)]
         self.surrchain_queue = multiprocessing.JoinableQueue()
-        self.minY = np.zeros((1,1))
-        self.maxY = np.ones((1,1))
-        self.model_signature = 0.0
-        self.use_surrogate = use_surrogate
-        self.surrogate_topology = surrogate_topology
-        self.save_surrogate_data =  save_surrogate_data
         self.compare_surrogate = compare_surrogate
         self.path = path
         self.folder = path
         self.total_swap_proposals = 0
         self.num_swaps = 0
+        self.exp =exp
+
+        self.model = Surrogate(self.dim , int(0.8*self.dim))
+        self.normaliser_list = []
 
     def initialize_islands(self):
         for i in range(self.num_islands):
-            self.islands.append(surrogate_EA(self.pop_size,self.dim,self.bounds,self.problem,self.island_numevals,self.swap_interval,self.parameter_queue[i],self.wait_island[i],self.event[i],i,self.surrogate_parameter_queues[i],self.surrogate_start[i],self.surrogate_resume[i],self.surrogate_interval,self.surrogate_prob,self.save_surrogate_data,self.use_surrogate,self.compare_surrogate,self.surrogate_topology,self.path))
-
+            self.islands.append(surrogate_EA(self.pop_size,self.dim,self.bounds,self.problem,self.island_numevals,self.swap_interval,self.parameter_queue[i],self.wait_island[i],self.event[i],i,self.model,self.normaliser_list,self.surrogate_parameter_queues[i],self.ev2[i],self.ev1[i],self.surrogate_interval,self.surrogate_prob,self.compare_surrogate,self.path,self.exp))
 
     def swap_procedure(self, parameter_queue_1, parameter_queue_2): 
 
-
             param1 = parameter_queue_1.get()
             param2 = parameter_queue_2.get()
-
             u = np.random.uniform(0,1)
             self.swap_proposal=1
             swapped = False
@@ -531,148 +470,104 @@ class distributed_surrogate_EA:
             return param1, param2 ,swapped
 
 
-    def surrogate_trainer(self,params): 
-
-            X = params[:,:self.dim]
-            Y = params[:,self.dim].reshape(X.shape[0],1)
-            self.model_signature += 1.0
-
-            np.savetxt(self.folder+'/surrogate/model_signature.txt', [self.model_signature])
-            # indices = np.where(Y==np.inf)[0]
-            # X = np.delete(X, indices, axis=0)
-            # Y = np.delete(Y,indices, axis=0)
-            surrogate_model = surrogate("krnn", X , Y , self.folder, self.save_surrogate_data, self.surrogate_topology )
-            surrogate_model.train(self.model_signature)        
-
-
     def evolve_islands(self): 
         
         self.initialize_islands()
-        # swap_proposal = np.ones(self.num_islands-1)
- 
-        #number_exchange = np.zeros(self.num_islands) 
 
         for j in range(0,self.num_islands):        
             self.wait_island[j].clear()
             self.event[j].clear()
             self.islands[j].start()
-        #SWAP PROCEDURE
-
+        surr_train_time = 0
         swaps_appected_main =0
         total_swaps_main =0
-        if self.use_surrogate:
-            for i in range(int(self.island_numevals/self.surrogate_interval) - 1):
-                count = 0
-                # checking if the processes are still alive
-                for index in range(self.num_islands):
-                    if not self.islands[index].is_alive():
-                        count+=1
-                        self.wait_island[index].set() 
+        a = int(self.island_numevals/self.swap_interval) 
 
-                if count == self.num_islands:
-                    break
-
-                # print("Waiting for the swapping signals.")
-                timeout_count = 0
-                for index in range(0,self.num_islands): 
-                    flag = self.wait_island[index].wait()
-                    if flag: 
-                        timeout_count += 1
-                # If signals from all the islands are not received then skip the swap and continue the loop.
-                """
-                if timeout_count != self.num_islands: 
-                    print("Skipping the swap")
-                    continue
-                """ 
-                if timeout_count == self.num_islands:
-                    """ 
-                    for index in range(0,self.num_islands-1): 
-                        param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
-                        self.parameter_queue[index].put(param_1)
-                        self.parameter_queue[index+1].put(param_2)
-                        if index == 0:
-                            if swapped:
-                                swaps_appected_main += 1
-                            total_swaps_main += 1
-                    """
-                    all_param =   np.empty((1,self.dim+1))
-                    for index in range(0,self.num_islands):
-                        # print('starting surrogate')
-                        queue_surr=  self.surrogate_parameter_queues[index] 
-                        surr_data = queue_surr.get() 
-                        # print("surr_data:",surr_data)
-                        #print("all_param.shape:",all_param.shape)
-                        all_param =   np.concatenate([all_param,surr_data],axis=0) 
-                    # print("Shape of all_param Collected :",all_param.shape)
-                    data_train = all_param[1:,:]  
-                    # print("Shape of Data Collected :",data_train.shape)
-                    self.surrogate_trainer(data_train) 
-
-                    for index in range (self.num_islands):
-                            self.event[index].set()
-                            self.wait_island[index].clear()
-
-                elif timeout_count == 0:
-                    break
-                else:
-                    print("Skipping the swap")             
-
-                
-            
-        for index in range(0,self.num_islands):
-            self.islands[index].join()
-
-        for i in range(0,self.num_islands):
-            #self.parameter_queue[i].close()
-            #self.parameter_queue[i].join_thread()
-            self.surrogate_parameter_queues[i].close()
-            self.surrogate_parameter_queues[i].join_thread()
+        if a == self.island_numevals/self.swap_interval :
+            a = a - 1
 
 
+        for i in range(a):   #3000/1000 = 3 , 3-1=2
+            # print(i)
 
-'''
-        self.initialize_islands()
-        for j in range(0,self.num_islands):        
-            self.wait_island[j].clear()
-            self.event[j].clear()
-            self.islands[j].start()
-        #SWAP PROCEDURE
-        swaps_appected_main =0
-        total_swaps_main =0
-        for i in range(int(self.island_numevals/self.swap_interval)):
             count = 0
             for index in range(self.num_islands):
                 if not self.islands[index].is_alive():
                     count+=1
                     self.wait_island[index].set() 
+
             if count == self.num_islands:
-                break 
+                break
+
             timeout_count = 0
             for index in range(0,self.num_islands): 
                 flag = self.wait_island[index].wait()
+
                 if flag: 
                     timeout_count += 1
+            
             if timeout_count != self.num_islands: 
                 continue
-            for index in range(0,self.num_islands-1): 
-                param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
-                self.parameter_queue[index].put(param_1)
-                self.parameter_queue[index+1].put(param_2)
-                if index == 0:
-                    if swapped:
-                        swaps_appected_main += 1
-                    total_swaps_main += 1
+            
+            if timeout_count== self.num_islands :
+                
+                for index in range(0,self.num_islands-1):
+                    param_1, param_2, swapped = self.swap_procedure(self.parameter_queue[index],self.parameter_queue[index+1])
+                    self.parameter_queue[index].put(param_1)
+                    self.parameter_queue[index+1].put(param_2)
+                    if index == 0:
+                        if swapped:
+                            swaps_appected_main += 1
+                        total_swaps_main += 1
+                all_param =   np.empty((1,self.dim+1))
+                
+                for index in range(0,self.num_islands):
+                    queue_surr=  self.surrogate_parameter_queues[index] 
+                    surr_data = queue_surr.get() 
+                    all_param =   np.concatenate([all_param,surr_data],axis=0)
+
+                data_train = all_param[1:,:]
+                start = time.time()
+
+                print("surrogate training started")
+                self.model.trainer(data_train[:,:-1] , data_train[:,-1] , 50)
+                
+                end = time.time()
+                surr_train_time+= (end-start)/60
+                
+    
+
             for index in range (self.num_islands):
                     self.event[index].set()
-                    self.wait_island[index].clear()                 
+                    self.wait_island[index].clear() 
+
+        
         for index in range(0,self.num_islands):
             self.islands[index].join()
-        # self.island_queue.join()          '''
+
+        for i in range(0,self.num_islands):
+            self.parameter_queue[i].close()
+            self.parameter_queue[i].join_thread()
+            self.surrogate_parameter_queues[i].close()
+            self.surrogate_parameter_queues[i].join_thread()
+
+        print("Surrogate Train time:",surr_train_time,"Mins")
 
 if __name__ == "__main__":
-    start = time.time()
-    a = distributed_surrogate_EA(pop_size=100,dim=30,bounds=[-5,5],problem=2,num_evals=49500,num_islands=3,surrogate_topology=1,use_surrogate=True,compare_surrogate=False,save_surrogate_data=False,path='C:\\Users\\admin\\Desktop\\unsw\\surr')
-    a.evolve_islands()
-    print('Time Taken= ',(time.time()-start)/60 ,"Minutes")
 
-    # add argument of island_swap bool 
+    for problem in [1]:
+        for dim in [30]:
+            for exp in range(1):
+                if dim==30:
+                    num_evals=100000
+                else:
+                    num_evals=200000
+
+                start = time.time()
+                a = distributed_surrogate_EA(pop_size=100,dim=dim,bounds=[-5,5],problem=problem,num_evals=num_evals,num_islands=8,interval=10,compare_surrogate=False,path='/home/yash/Desktop/unsw/surr',exp=exp)
+                a.evolve_islands()
+                min = (time.time()-start)/60
+                with open(("/home/yash/Desktop/unsw/surr/surrogate/%s%s%s%s/%s/time.txt" % ('problem=',problem,'dim=',dim, exp )),'ab') as outfile:
+                    np.savetxt(outfile, [min])
+
+                print('Time Taken= ',(time.time()-start)/60 ,"Minutes")
